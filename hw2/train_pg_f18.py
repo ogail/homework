@@ -153,6 +153,7 @@ class Agent(object):
                 Pass in self.n_layers for the 'n_layers' argument, and
                 pass in self.size for the 'size' argument.
         """
+        batch_size = sy_ob_no.shape.as_list()[0]
         if self.discrete:
             # YOUR_CODE_HERE
             # CORRECTION: no need to specify output size with batch dim as the observation input
@@ -160,12 +161,15 @@ class Agent(object):
             # output layer.
             sy_logits_na = build_mlp(sy_ob_no, self.ac_dim, "policy_forward_pass", self.n_layers,
                                      self.size, tf.nn.relu)
+            assert sy_logits_na.shape.as_list() == [batch_size, self.ac_dim]
             return sy_logits_na
         else:
             # YOUR_CODE_HERE
             sy_mean = build_mlp(sy_ob_no, self.ac_dim, "policy_forward_pass", self.n_layers,
                                 self.size, tf.nn.relu)
             sy_logstd = tf.get_variable('logstd', shape=self.ac_dim)
+            assert sy_mean.shape.as_list() == [batch_size, self.ac_dim]
+            assert sy_logstd.shape.as_list() == [self.ac_dim]
             return (sy_mean, sy_logstd)
 
     #========================================================================================#
