@@ -70,6 +70,7 @@ def setup_logger(logdir, locals_):
     params = {k: locals_[k] if k in locals_ else None for k in args}
     logz.save_params(params)
 
+
 #============================================================================================#
 # Policy Gradient
 #============================================================================================#
@@ -99,6 +100,7 @@ class Agent(object):
         self.sess = tf.Session(config=tf_config)
         self.sess.__enter__()  # equivalent to `with self.sess:`
         tf.global_variables_initializer().run()  # pylint: disable=E1101
+        self.summary_writer = tf.summary.FileWriter('logs', self.sess.graph)
 
     #========================================================================================#
     #                           ----------PROBLEM 2----------
@@ -283,9 +285,15 @@ class Agent(object):
         # Loss Function and Training Operation
         #========================================================================================#
         # YOUR CODE HERE
-        # EXPERIMENT use tf.multiply instead of * operator
-        loss = tf.reduce_mean(tf.multiply(self.sy_logprob_n, self.sy_adv_n))
-        self.update_op = tf.train.AdamOptimizer(self.learning_rate).minimize(loss)
+        # EXPERIMENT use * instead of tf.multiply operator
+        self.loss = tf.reduce_mean(tf.multiply(self.sy_logprob_n, self.sy_adv_n))
+        self.update_op = tf.train.AdamOptimizer(self.learning_rate).minimize(self.loss)
+
+        # create tf summaries
+        tf.summary.scalar("loss", self.loss)
+
+        # merge all summarizes into single op
+        self.merged = tf.summary.merge_all()
 
         #========================================================================================#
         #                           ----------PROBLEM 6----------
@@ -333,11 +341,11 @@ class Agent(object):
             #====================================================================================#
             #                           ----------PROBLEM 3----------
             #====================================================================================#
-            ac = self.sess.run(self.sy_sampled_ac, feed_dict={self.sy_ob_no: ob[None]})  # YOUR CODE HERE
+            ac = self.sess.run(self.sy_sampled_ac, feed_dict={
+                               self.sy_ob_no: ob[None]})  # YOUR CODE HERE
             ac = ac[0]
             acs.append(ac)
-            print(ac)
-            ob, rew, done, _ = env.step(ac)
+            ob, rew, done, _ = env.step(ac.squeeze())
             rewards.append(rew)
             steps += 1
             if done or steps > self.max_path_length:
@@ -429,10 +437,6 @@ class Agent(object):
                         sum([self.gamma**(t_bar - t) * r for t_bar, r in enumerate(traj_re)]))
         else:
             for traj_re in re_n:
-                # mc_re = 0
-                # for t, r in enumerate(traj_re):
-                #     mc_re += self.gamma**t * r
-                # q_n.extend([mc_re] * len(traj_re))
                 q_n.extend([sum([self.gamma**t * r for t, r in enumerate(traj_re)])] * len(traj_re))
         return q_n
 
@@ -492,6 +496,7 @@ class Agent(object):
                     advantages whose length is the sum of the lengths of the paths
         """
         q_n = self.sum_of_rewards(re_n)
+        assert len(q_n) == len(ob_no)
         adv_n = self.compute_advantage(ob_no, q_n)
         #====================================================================================#
         #                           ----------PROBLEM 3----------
@@ -551,12 +556,14 @@ class Agent(object):
         # and after an update, and then log them below.
 
         # YOUR_CODE_HERE
-        loss = self.sess.run(self.update_op,
-                             feed_dict={
-                                 self.sy_ob_no: ob[None],
-                                 self.sy_ac_na: ac_na,
-                                 self.sy_adv_n: adv_n})  # YOUR CODE HERE
-        print(loss)
+        _, loss, summary = self.sess.run([self.update_op, self.loss, self.merged],
+                                         feed_dict={self.sy_ob_no: ob_no,
+                                                    self.sy_ac_na: ac_na.squeeze(),
+                                                    self.sy_adv_n: adv_n})
+
+        # write logs at every iteration
+        self.summary_writer.add_summary(summary)
+        self.summary_writer.flush()
 
 
 def train_PG(
