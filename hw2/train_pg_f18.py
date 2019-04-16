@@ -202,8 +202,7 @@ class Agent(object):
         if self.discrete:
             sy_logits_na = policy_parameters
             # YOUR_CODE_HERE
-            # _, sy_sampled_ac = tf.nn.top_k(sy_logits_na)
-            sy_sampled_ac = tf.squeeze(tf.multinomial(sy_logits_na, 1), axis=[1])
+            _, sy_sampled_ac = tf.nn.top_k(sy_logits_na)
         else:
             sy_mean, sy_logstd = policy_parameters
             # YOUR_CODE_HERE
