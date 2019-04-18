@@ -202,12 +202,14 @@ class Agent(object):
         if self.discrete:
             sy_logits_na = policy_parameters
             # YOUR_CODE_HERE
-            _, sy_sampled_ac = tf.nn.top_k(sy_logits_na)
+            sy_sampled_ac = tf.squeeze(tf.multinomial(sy_logits_na, 1), axis=[1])
+            assert sy_sampled_ac.shape.as_list() == [sy_logits_na.shape.as_list()[0]]
         else:
             sy_mean, sy_logstd = policy_parameters
             # YOUR_CODE_HERE
             sy_sampled_ac = sy_mean + tf.multipy(tf.math.exp(sy_logstd),
                                                  tf.random_normal(shape=sy_mean.shape))
+            assert sy_sampled_ac.shape.as_list() == [sy_mean.shape.as_list()]
         return sy_sampled_ac
 
     #========================================================================================#
@@ -241,13 +243,16 @@ class Agent(object):
             # YOUR_CODE_HERE
             sy_logprob_n = tf.nn.sparse_softmax_cross_entropy_with_logits(labels=sy_ac_na,
                                                                           logits=sy_logits_na)
+            assert sy_logprob_n.shape.as_list() == [sy_logits_na.shape.as_list()[0]]
         else:
             sy_mean, sy_logstd = policy_parameters
             # YOUR_CODE_HERE
             # initialize a single self.ac_dim-variate Gaussian.
-            mvn = tf.contrib.distributions.MultivariateNormalDiag(
-                loc=sy_mean, scale_diag=tf.math.exp(sy_logstd))
+            mvn = tf.contrib.distributions.MultivariateNormalDiag(loc=sy_mean,
+                                                                  scale_diag=tf.math.exp(sy_logstd))
             sy_logprob_n = mvn.log_prob(sy_ac_na)
+
+            assert sy_logprob_n.shape.as_list() == sy_mean.shape.as_list()
         return sy_logprob_n
 
     def build_computation_graph(self):
@@ -290,7 +295,7 @@ class Agent(object):
         #========================================================================================#
         # YOUR CODE HERE
         # EXPERIMENT use * instead of tf.multiply operator
-        self.loss = tf.reduce_mean(tf.multiply(self.sy_logprob_n, self.sy_adv_n))
+        self.loss = tf.reduce_mean(self.sy_logprob_n * self.sy_adv_n)
         self.update_op = tf.train.AdamOptimizer(self.learning_rate).minimize(self.loss)
 
         # create tf summaries
@@ -433,12 +438,7 @@ class Agent(object):
         if self.reward_to_go:
             for traj_re in re_n:
                 for t in range(len(traj_re)):
-                    # rtg = 0
-                    # for t_bar, r in enumerate(traj_re):
-                    #     rtg += self.gamma**(t_bar-t) * r
-                    # q_n.append(rtg)
-                    q_n.append(
-                        sum([self.gamma**(t_bar - t) * r for t_bar, r in enumerate(traj_re)]))
+                    q_n.append(sum([self.gamma**(t_ - t) * r for t_, r in enumerate(traj_re[t:])]))
         else:
             for traj_re in re_n:
                 q_n.extend([sum([self.gamma**t * r for t, r in enumerate(traj_re)])] * len(traj_re))
@@ -478,6 +478,8 @@ class Agent(object):
             adv_n = q_n - b_n
         else:
             adv_n = q_n.copy()
+
+        assert len(adv_n) == len(q_n)
         return adv_n
 
     def estimate_return(self, ob_no, re_n):
