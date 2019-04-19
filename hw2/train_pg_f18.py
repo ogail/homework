@@ -207,9 +207,9 @@ class Agent(object):
         else:
             sy_mean, sy_logstd = policy_parameters
             # YOUR_CODE_HERE
-            sy_sampled_ac = sy_mean + tf.multipy(tf.math.exp(sy_logstd),
-                                                 tf.random_normal(shape=sy_mean.shape))
-            assert sy_sampled_ac.shape.as_list() == [sy_mean.shape.as_list()]
+            sy_sampled_ac = sy_mean + \
+                tf.math.multiply(tf.math.exp(sy_logstd), tf.random_normal(shape=sy_logstd.shape))
+            assert sy_sampled_ac.shape.as_list() == sy_mean.shape.as_list()
         return sy_sampled_ac
 
     #========================================================================================#
@@ -250,9 +250,11 @@ class Agent(object):
             # initialize a single self.ac_dim-variate Gaussian.
             mvn = tf.contrib.distributions.MultivariateNormalDiag(loc=sy_mean,
                                                                   scale_diag=tf.math.exp(sy_logstd))
-            sy_logprob_n = mvn.log_prob(sy_ac_na)
-
-            assert sy_logprob_n.shape.as_list() == sy_mean.shape.as_list()
+            # CORRECTION: because log probability is negative and because of loss expects +ve values
+            # the log prob is multiplied by -1 to enable optimzation process to work
+            sy_logprob_n = -mvn.log_prob(sy_ac_na)
+            assert sy_logprob_n.shape.as_list() == [sy_mean.shape.as_list()[0]]
+        self.sy_logprob_n = sy_logprob_n
         return sy_logprob_n
 
     def build_computation_graph(self):
@@ -294,7 +296,6 @@ class Agent(object):
         # Loss Function and Training Operation
         #========================================================================================#
         # YOUR CODE HERE
-        # EXPERIMENT use * instead of tf.multiply operator
         self.loss = tf.reduce_mean(self.sy_logprob_n * self.sy_adv_n)
         self.update_op = tf.train.AdamOptimizer(self.learning_rate).minimize(self.loss)
 
@@ -350,11 +351,11 @@ class Agent(object):
             #====================================================================================#
             #                           ----------PROBLEM 3----------
             #====================================================================================#
-            ac = self.sess.run(self.sy_sampled_ac, feed_dict={
-                               self.sy_ob_no: ob[None]})  # YOUR CODE HERE
+            # YOUR CODE HERE
+            ac = self.sess.run(self.sy_sampled_ac, feed_dict={self.sy_ob_no: ob[None]})
             ac = ac[0]
             acs.append(ac)
-            ob, rew, done, _ = env.step(ac.squeeze())
+            ob, rew, done, _ = env.step(ac)
             rewards.append(rew)
             steps += 1
             if done or steps > self.max_path_length:
@@ -564,7 +565,7 @@ class Agent(object):
         # YOUR_CODE_HERE
         _, loss, summary = self.sess.run([self.update_op, self.loss, self.merged],
                                          feed_dict={self.sy_ob_no: ob_no,
-                                                    self.sy_ac_na: ac_na.squeeze(),
+                                                    self.sy_ac_na: ac_na,
                                                     self.sy_adv_n: adv_n})
 
         # write logs at every iteration
