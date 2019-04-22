@@ -97,6 +97,7 @@ class Agent(object):
 
     def init_tf_sess(self):
         tf_config = tf.ConfigProto(inter_op_parallelism_threads=1, intra_op_parallelism_threads=1)
+        tf_config.gpu_options.allow_growth = True
         self.sess = tf.Session(config=tf_config)
         self.sess.__enter__()  # equivalent to `with self.sess:`
         tf.global_variables_initializer().run()  # pylint: disable=E1101
@@ -253,7 +254,6 @@ class Agent(object):
                                                                   scale_diag=tf.math.exp(sy_logstd))
             # CORRECTION: because log probability is negative and because of loss expects +ve values
             # the log prob is multiplied by -1 to enable optimzation process to work
-            # EXPERIMENT WITH reduce_sum and -ve at loss
             sy_logprob_n = -mvn.log_prob(sy_ac_na)
             assert sy_logprob_n.shape.as_list() == [sy_mean.shape.as_list()[0]]
         self.sy_logprob_n = sy_logprob_n
