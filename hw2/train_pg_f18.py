@@ -443,7 +443,7 @@ class Agent(object):
         if self.reward_to_go:
             for traj_re in re_n:
                 for t in range(len(traj_re)):
-                    q_n.append(sum([self.gamma**(t_ - t) * r for t_, r in enumerate(traj_re[t:])]))
+                    q_n.append(sum([self.gamma**t_ * r for t_, r in enumerate(traj_re[t:])]))
         else:
             for traj_re in re_n:
                 q_n.extend([sum([self.gamma**t * r for t, r in enumerate(traj_re)])] * len(traj_re))
@@ -484,7 +484,7 @@ class Agent(object):
             b_n = self.sess.run(self.baseline_prediction, feed_dict={self.sy_ob_no: ob_no})
 
             # rescale baseline stats to match adv stats (normalize then scale by adv stats)
-            b_n = (b_n - np.mean(b_n)) / np.std(b_n) * np.std(q_n) + np.mean(q_n)
+            b_n =  self.norm(b_n, np.mean(q_n), np.std(q_n))
 
             # compute advantage
             adv_n = q_n - b_n
@@ -493,6 +493,12 @@ class Agent(object):
 
         assert len(adv_n) == len(q_n)
         return adv_n
+
+    def norm(self, a, m=None, std=None):
+        normed_a = (a - np.mean(a)) / np.std(a)
+        if m and std:
+            normed_a = (a + m) * std
+        return normed_a
 
     def estimate_return(self, ob_no, re_n):
         """
@@ -523,7 +529,7 @@ class Agent(object):
         if self.normalize_advantages:
             # On the next line, implement a trick which is known empirically to reduce variance
             # in policy gradient methods: normalize adv_n to have mean zero and std=1.
-            adv_n = (adv_n - np.mean(adv_n)) / np.std(adv_n)   # YOUR_CODE_HERE
+            adv_n = self.norm(adv_n)   # YOUR_CODE_HERE
         return q_n, adv_n
 
     def update_parameters(self, ob_no, ac_na, q_n, adv_n):
@@ -559,7 +565,7 @@ class Agent(object):
             # Agent.compute_advantage.)
 
             # YOUR_CODE_HERE
-            target_n = (q_n - np.mean(q_n)) / np.std(q_n)
+            target_n =  self.norm(q_n)
             _ = self.sess.run(self.baseline_update_op,
                               feed_dict={self.sy_ob_no: ob_no,
                                          self.sy_target_n: target_n})

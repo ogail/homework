@@ -62,4 +62,6 @@ python3 train_pg_f18.py InvertedPendulum-v2 -n 100 -b 5000 -e 5 -rtg --exp_name 
 
 
 ## Problem 7
-### Summary
+The plot below shows Lunar Lander agent with and without neural network baselines
+
+![](fig/nn_bl_LunarLanderContinuous-v2.png)
