@@ -50,6 +50,7 @@ Q3- Did the batch size make an impact?
 ## Problem 5
 
 ### Summary
+Policy gradient were able to achieve the below learning for the inverted pendulum agent.
 
 The command below is used to get the fig
 
@@ -58,3 +59,7 @@ python3 train_pg_f18.py InvertedPendulum-v2 -n 100 -b 5000 -e 5 -rtg --exp_name 
 ```
 
 ![](fig/InvertedPendulum-v2.png)
+
+
+## Problem 7
+### Summary

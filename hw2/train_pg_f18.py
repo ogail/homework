@@ -559,7 +559,7 @@ class Agent(object):
             # Agent.compute_advantage.)
 
             # YOUR_CODE_HERE
-            target_n = q_n - np.mean(q_n) / np.std(q_n)
+            target_n = (q_n - np.mean(q_n)) / np.std(q_n)
             _ = self.sess.run(self.baseline_update_op,
                               feed_dict={self.sy_ob_no: ob_no,
                                          self.sy_target_n: target_n})
