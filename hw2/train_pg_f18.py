@@ -207,8 +207,9 @@ class Agent(object):
         else:
             sy_mean, sy_logstd = policy_parameters
             # YOUR_CODE_HERE
-            sy_sampled_ac = sy_mean + \
-                tf.math.multiply(tf.math.exp(sy_logstd), tf.random_normal(shape=sy_logstd.shape))
+            sy_z = tf.random_normal(shape=sy_logstd.shape)
+            sy_std = tf.math.exp(sy_logstd)
+            sy_sampled_ac = sy_mean + sy_std * sy_z
             assert sy_sampled_ac.shape.as_list() == sy_mean.shape.as_list()
         return sy_sampled_ac
 
@@ -252,6 +253,7 @@ class Agent(object):
                                                                   scale_diag=tf.math.exp(sy_logstd))
             # CORRECTION: because log probability is negative and because of loss expects +ve values
             # the log prob is multiplied by -1 to enable optimzation process to work
+            # EXPERIMENT WITH reduce_sum and -ve at loss
             sy_logprob_n = -mvn.log_prob(sy_ac_na)
             assert sy_logprob_n.shape.as_list() == [sy_mean.shape.as_list()[0]]
         self.sy_logprob_n = sy_logprob_n
@@ -313,7 +315,6 @@ class Agent(object):
         # neural network baseline. These will be used to fit the neural network baseline.
         #========================================================================================#
         if self.nn_baseline:
-            raise NotImplementedError
             self.baseline_prediction = tf.squeeze(build_mlp(
                 self.sy_ob_no,
                 1,
@@ -321,8 +322,11 @@ class Agent(object):
                 n_layers=self.n_layers,
                 size=self.size))
             # YOUR_CODE_HERE
-            self.sy_target_n = None
-            baseline_loss = None
+            # CORRECTION: if you wanted to decouple the advantage from the actual target, just define
+            # a new variable placeholder with desired shape
+            self.sy_target_n = tf.placeholder(shape=[None], name="bl", dtype=tf.float32)
+            baseline_loss = tf.losses.mean_squared_error(
+                labels=self.sy_target_n, predictions=self.baseline_prediction)
             self.baseline_update_op = tf.train.AdamOptimizer(
                 self.learning_rate).minimize(baseline_loss)
 
@@ -474,8 +478,15 @@ class Agent(object):
             # Hint #bl1: rescale the output from the nn_baseline to match the statistics
             # (mean and std) of the current batch of Q-values. (Goes with Hint
             # #bl2 in Agent.update_parameters.
-            raise NotImplementedError
-            b_n = None  # YOUR CODE HERE
+            # CORRECTION: to get numpy result from symbolic operation, run it through the sess
+            # YOUR CODE HERE
+            # predict the state value
+            b_n = self.sess.run(self.baseline_prediction, feed_dict={self.sy_ob_no: ob_no})
+
+            # rescale baseline stats to match adv stats (normalize then scale by adv stats)
+            b_n = (b_n - np.mean(b_n)) / np.std(b_n) * np.std(q_n) + np.mean(q_n)
+
+            # compute advantage
             adv_n = q_n - b_n
         else:
             adv_n = q_n.copy()
@@ -548,8 +559,10 @@ class Agent(object):
             # Agent.compute_advantage.)
 
             # YOUR_CODE_HERE
-            raise NotImplementedError
-            target_n = None
+            target_n = q_n - np.mean(q_n) / np.std(q_n)
+            _ = self.sess.run(self.baseline_update_op,
+                              feed_dict={self.sy_ob_no: ob_no,
+                                         self.sy_target_n: target_n})
 
         #====================================================================================#
         #                           ----------PROBLEM 3----------
@@ -564,9 +577,9 @@ class Agent(object):
 
         # YOUR_CODE_HERE
         _, loss, summary = self.sess.run([self.update_op, self.loss, self.merged],
-                                         feed_dict={self.sy_ob_no: ob_no,
-                                                    self.sy_ac_na: ac_na,
-                                                    self.sy_adv_n: adv_n})
+                                            feed_dict={self.sy_ob_no: ob_no,
+                                                       self.sy_ac_na: ac_na,
+                                                       self.sy_adv_n: adv_n})
 
         # write logs at every iteration
         self.summary_writer.add_summary(summary)
