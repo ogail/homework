@@ -91,6 +91,7 @@ class Agent(object):
         self.min_timesteps_per_batch = sample_trajectory_args['min_timesteps_per_batch']
 
         self.gamma = estimate_return_args['gamma']
+        self.alpha = estimate_return_args['alpha']
         self.reward_to_go = estimate_return_args['reward_to_go']
         self.nn_baseline = estimate_return_args['nn_baseline']
         self.normalize_advantages = estimate_return_args['normalize_advantages']
@@ -484,7 +485,7 @@ class Agent(object):
             b_n = self.sess.run(self.baseline_prediction, feed_dict={self.sy_ob_no: ob_no})
 
             # rescale baseline stats to match adv stats (normalize then scale by adv stats)
-            b_n =  self.norm(b_n, np.mean(q_n), np.std(q_n))
+            b_n = self.norm(b_n, np.mean(q_n), np.std(q_n))
 
             # compute advantage
             adv_n = q_n - b_n
@@ -499,6 +500,24 @@ class Agent(object):
         if m and std:
             normed_a = (a + m) * std
         return normed_a
+
+    def compute_gae(self, ob_no, re_n):
+        # get estimates for all state values
+        v_n = self.sess.run(self.baseline_prediction, feed_dict={self.sy_ob_no: ob_no})
+
+        # append state values by one element to account for last state
+        v_n.append(0)
+
+        # compute GAE per state
+        gae_n = []
+        i = 0
+        for traj_re in re_n:
+            for t in range(len(traj_re)):
+                # A^{pi}_GAE = sum_{t'=t}^T (gamma*alpha)^(t'-t) * [r(s_t', a_t') + gamma * V^{pi}_{phi}(s_t'+1) - V^{pi}_{phi}(s_t')
+                gae_n.append(sum([(self.gamma * self.alpha)**t_ *
+                                  (r + self.gamma * v_n[i + 1] - v_n[i]) for t_, r in enumerate(traj_re[t:])]))
+                i += 1
+        # EXPERIMENT: check of rescaling needed
 
     def estimate_return(self, ob_no, re_n):
         """
@@ -519,9 +538,13 @@ class Agent(object):
                 adv_n: shape: (sum_of_path_lengths). A single vector for the estimated
                     advantages whose length is the sum of the lengths of the paths
         """
-        q_n = self.sum_of_rewards(re_n)
-        assert len(q_n) == len(ob_no)
-        adv_n = self.compute_advantage(ob_no, q_n)
+        if self.alpha:
+            adv_n = self.compute_gae(ob_no, re_n)
+        else:
+            q_n = self.sum_of_rewards(re_n)
+            assert len(q_n) == len(ob_no)
+            adv_n = self.compute_advantage(ob_no, q_n)
+        assert len(adv_n) == len(ob_no)
         #====================================================================================#
         #                           ----------PROBLEM 3----------
         # Advantage Normalization
@@ -565,7 +588,7 @@ class Agent(object):
             # Agent.compute_advantage.)
 
             # YOUR_CODE_HERE
-            target_n =  self.norm(q_n)
+            target_n = self.norm(q_n)
             _ = self.sess.run(self.baseline_update_op,
                               feed_dict={self.sy_ob_no: ob_no,
                                          self.sy_target_n: target_n})
@@ -583,9 +606,9 @@ class Agent(object):
 
         # YOUR_CODE_HERE
         _, loss, summary = self.sess.run([self.update_op, self.loss, self.merged],
-                                            feed_dict={self.sy_ob_no: ob_no,
-                                                       self.sy_ac_na: ac_na,
-                                                       self.sy_adv_n: adv_n})
+                                         feed_dict={self.sy_ob_no: ob_no,
+                                                    self.sy_ac_na: ac_na,
+                                                    self.sy_adv_n: adv_n})
 
         # write logs at every iteration
         self.summary_writer.add_summary(summary)
@@ -658,6 +681,7 @@ def train_PG(
 
     estimate_return_args = {
         'gamma': gamma,
+        'gamma': alpha,
         'reward_to_go': reward_to_go,
         'nn_baseline': nn_baseline,
         'normalize_advantages': normalize_advantages,
@@ -714,6 +738,7 @@ def main():
     parser.add_argument('--exp_name', type=str, default='vpg')
     parser.add_argument('--render', action='store_true')
     parser.add_argument('--discount', type=float, default=1.0)
+    parser.add_argument('--alpha', type=float, default=None)
     parser.add_argument('--n_iter', '-n', type=int, default=100)
     parser.add_argument('--batch_size', '-b', type=int, default=1000)
     parser.add_argument('--ep_len', '-ep', type=float, default=-1.)
@@ -748,6 +773,7 @@ def main():
                 env_name=args.env_name,
                 n_iter=args.n_iter,
                 gamma=args.discount,
+                alpha=args.alpha,
                 min_timesteps_per_batch=args.batch_size,
                 max_path_length=max_path_length,
                 learning_rate=args.learning_rate,

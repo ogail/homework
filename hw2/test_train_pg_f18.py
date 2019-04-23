@@ -2,18 +2,19 @@
 Unit tests for train_pg_f18.py
 """
 
-from sklearn import preprocessing
 import numpy as np
-from train_pg_f18 import Agent
 from mock import patch
+from sklearn import preprocessing
+
+from train_pg_f18 import Agent
+
 
 class TestPolicyGradients(object):
     def test_normalize(self):
         with patch.object(Agent, "__init__", lambda p1, p2, p3, p4: None):
             agent = Agent(None, None, None)
-            a=np.array([1, -13, 44, 100, 57, -20, 53, 53, 6, 0])
+            a = np.array([1, -13, 44, 100, 57, -20, 53, 53, 6, 0])
             np.testing.assert_allclose(agent.norm(a), preprocessing.scale(a))
-
 
     def test_sum_of_rewards_monte_carlo(self):
         with patch.object(Agent, "__init__", lambda p1, p2, p3, p4: None):
@@ -27,7 +28,6 @@ class TestPolicyGradients(object):
 
             assert len(expected) == len(actual)
             np.testing.assert_allclose(expected, actual)
-
 
     def test_sum_of_rewards_reward_to_go(self):
         with patch.object(Agent, "__init__", lambda p1, p2, p3, p4: None):
