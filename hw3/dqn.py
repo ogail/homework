@@ -162,6 +162,28 @@ class QLearner(object):
         ######
 
         # YOUR CODE HERE
+        # predict action-state q-values for next state (s_t+1)
+        tp1_target_q = q_func(self.obs_tp1_ph, self.num_actions, scope="target_q_func", reuse=False)
+        assert tp1_target_q.shape.as_list() == [None, self.num_actions]
+
+        if double_q:
+            # sample action (a) based on t+1 obs w/ highest value via current q network
+            tp1_curr_q = q_func(self.obs_tp1_ph, self.num_actions, scope="q_func", reuse=False)
+            assert tp1_curr_q.shape.as_list() == [None, self.num_actions]
+            max_ac = tf.argmax(tp1_curr_q, axis=1)
+            assert max_ac.shape.as_list() == [None]
+
+            # fetch the q value for action (a)
+            tp1_target_q = tp1_target_q[:,max_ac]
+            assert tp1_target_q.shape.as_list() == [None]
+        else:
+            tp1_target_q = q_func(obs_tp1_ph, num_actions, scope="target_q_func", reuse=False)
+        exit()
+        sample = self.rew_t_ph + (gamma * tp1_target_q)
+        curr_q = q_func(obs_t_float, num_actions, scope="q_func", reuse=False)
+        self.total_error = tf.reduce_sum(huber_loss(curr_q - sample))
+        q_func_vars = tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope='q_func')
+        target_q_func_vars = tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope='target_q_func')
 
         ######
 
