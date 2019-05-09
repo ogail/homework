@@ -16,6 +16,22 @@ from dqn_utils import *
 OptimizerSpec = namedtuple("OptimizerSpec", ["constructor", "kwargs", "lr_schedule"])
 
 
+def get_action_q(q, a):
+    """
+        q has shape [batch_size, num_actions]
+        a has shape [batch_size, 1]
+        output is q values for action a from q
+    """
+    # index all batch, so create indexing range to cover batch_size
+    batch_indx = tf.range(tf.shape(q)[0])
+
+    # stitch each batch index with its corresponding index from the action tensor
+    indx = tf.stack([batch_indx, a], axis=1)
+
+    # index the tensor!
+    return tf.gather_nd(q, indx)
+
+
 class QLearner(object):
 
     def __init__(
@@ -162,29 +178,46 @@ class QLearner(object):
         ######
 
         # YOUR CODE HERE
-        # predict action-state q-values for next state (s_t+1)
-        tp1_target_q = q_func(self.obs_tp1_ph, self.num_actions, scope="target_q_func", reuse=False)
-        assert tp1_target_q.shape.as_list() == [None, self.num_actions]
+        scope_q_func = 'q_func'
+        scope_target_q_func = 'target_q_func'
+
+        # get q values for all actions in the current state s_t via current q function
+        qs_t = q_func(obs_t_float, self.num_actions, scope=scope_q_func, reuse=False)
+        assert qs_t.shape.as_list() == [None, self.num_actions]
+
+        # get q values for executed actions only
+        q_t = get_action_q(qs_t, self.act_t_ph)
+        assert q_t.shape.as_list() == [None]
+
+        # get q values for all actions in the next state s_tp1 via target q function
+        qs_tp1_target = q_func(obs_tp1_float, self.num_actions, scope=scope_target_q_func, reuse=False)
+        assert qs_tp1_target.shape.as_list() == [None, self.num_actions]
 
         if double_q:
-            # sample action (a) based on t+1 obs w/ highest value via current q network
-            tp1_curr_q = q_func(self.obs_tp1_ph, self.num_actions, scope="q_func", reuse=False)
-            assert tp1_curr_q.shape.as_list() == [None, self.num_actions]
-            max_ac = tf.argmax(tp1_curr_q, axis=1)
-            assert max_ac.shape.as_list() == [None]
+            # get q values for all actions in the next state s_t+1 via current q function
+            qs_tp1 = q_func(obs_tp1_float, self.num_actions, scope=scope_q_func, reuse=True)
+            assert qs_tp1.shape.as_list() == [None, self.num_actions]
 
-            # fetch the q value for action (a)
-            tp1_target_q = tp1_target_q[:,max_ac]
-            assert tp1_target_q.shape.as_list() == [None]
+            # get actions with max q values only
+            act_argmax_tp1 = tf.argmax(qs_tp1, axis=1, output_type=tf.int32)
+            assert act_argmax_tp1.shape.as_list() == [None]
+
+            # get q value for actions according to target network
+            q_tp1 = get_action_q(qs_tp1_target, act_argmax_tp1)
+            assert q_tp1.shape.as_list() == [None]
+
+            q_target = self.rew_t_ph + (gamma * q_tp1 * (1 - self.done_mask_ph))
+
         else:
-            tp1_target_q = q_func(obs_tp1_ph, num_actions, scope="target_q_func", reuse=False)
-        exit()
-        sample = self.rew_t_ph + (gamma * tp1_target_q)
-        curr_q = q_func(obs_t_float, num_actions, scope="q_func", reuse=False)
-        self.total_error = tf.reduce_sum(huber_loss(curr_q - sample))
-        q_func_vars = tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope='q_func')
-        target_q_func_vars = tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope='target_q_func')
+            q_target = self.rew_t_ph + (gamma * tf.reduce_max(qs_tp1_target, axis=1) * (1 - self.done_mask_ph))
+        assert q_target.shape.as_list() == [None]
 
+        # define loss for calculating bellman error
+        # self.total_error = tf.losses.huber_loss(q_target, q_t, reduction=tf.losses.Reduction.SUM)
+        self.total_error = tf.reduce_sum(huber_loss(q_t - q_target))
+        q_func_vars = tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope=scope_q_func)
+        target_q_func_vars = tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope=scope_target_q_func)
+        
         ######
 
         # construct optimization op (with gradient clipping)
