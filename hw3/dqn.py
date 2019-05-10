@@ -217,7 +217,7 @@ class QLearner(object):
         self.total_error = tf.reduce_sum(huber_loss(q_t - q_target))
         q_func_vars = tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope=scope_q_func)
         target_q_func_vars = tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope=scope_target_q_func)
-        
+
         ######
 
         # construct optimization op (with gradient clipping)
@@ -288,7 +288,25 @@ class QLearner(object):
         #####
 
         # YOUR CODE HERE
-        print('Hello')
+        # store current observation in the replay buffer and fetch its index
+        idx = self.replay_buffer.store_frame(self.last_obs)
+
+        # transform current observation so it can be passed to the model
+        obs = self.replay_buffer.encode_recent_observation()
+
+        # sample from policy the next action to do (use e-greedy for exploration)
+        if not self.model_initialized or random.random() < self.exploration.value(self.t):
+            action = self.env.action_space.sample()
+        else:
+
+
+        # step the simulator using the new action and fetch the new last observation
+        self.last_obs, reward, done, _ = self.env.step(action)
+
+        # update the replay buffer with the current observation info
+        self.replay_buffer.store_effect(idx, action, reward, done)
+
+        # check if episode is done, if so invoke obs = env.reset()
 
     def update_model(self):
         # 3. Perform experience replay and train the network.
