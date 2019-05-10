@@ -13,7 +13,8 @@ import tensorflow.contrib.layers as layers
 
 from dqn_utils import *
 
-OptimizerSpec = namedtuple("OptimizerSpec", ["constructor", "kwargs", "lr_schedule"])
+OptimizerSpec = namedtuple(
+    "OptimizerSpec", ["constructor", "kwargs", "lr_schedule"])
 
 
 def get_action_q(q, a):
@@ -118,7 +119,8 @@ class QLearner(object):
         self.env = env
         self.session = session
         self.exploration = exploration
-        self.rew_file = str(uuid.uuid4()) + '.pkl' if rew_file is None else rew_file
+        self.rew_file = str(uuid.uuid4()) + \
+            '.pkl' if rew_file is None else rew_file
 
         ###############
         # BUILD MODEL #
@@ -182,20 +184,25 @@ class QLearner(object):
         scope_target_q_func = 'target_q_func'
 
         # get q values for all actions in the current state s_t via current q function
-        qs_t = q_func(obs_t_float, self.num_actions, scope=scope_q_func, reuse=False)
+        qs_t = q_func(obs_t_float, self.num_actions,
+                      scope=scope_q_func, reuse=False)
         assert qs_t.shape.as_list() == [None, self.num_actions]
+
+        self.q_argmax = tf.argmax(qs_t, axis=1, output_type=tf.int32)
 
         # get q values for executed actions only
         q_t = get_action_q(qs_t, self.act_t_ph)
         assert q_t.shape.as_list() == [None]
 
         # get q values for all actions in the next state s_tp1 via target q function
-        qs_tp1_target = q_func(obs_tp1_float, self.num_actions, scope=scope_target_q_func, reuse=False)
+        qs_tp1_target = q_func(
+            obs_tp1_float, self.num_actions, scope=scope_target_q_func, reuse=False)
         assert qs_tp1_target.shape.as_list() == [None, self.num_actions]
 
         if double_q:
             # get q values for all actions in the next state s_t+1 via current q function
-            qs_tp1 = q_func(obs_tp1_float, self.num_actions, scope=scope_q_func, reuse=True)
+            qs_tp1 = q_func(obs_tp1_float, self.num_actions,
+                            scope=scope_q_func, reuse=True)
             assert qs_tp1.shape.as_list() == [None, self.num_actions]
 
             # get actions with max q values only
@@ -206,22 +213,28 @@ class QLearner(object):
             q_tp1 = get_action_q(qs_tp1_target, act_argmax_tp1)
             assert q_tp1.shape.as_list() == [None]
 
-            q_target = self.rew_t_ph + (gamma * q_tp1 * (1 - self.done_mask_ph))
+            q_target = self.rew_t_ph + \
+                (gamma * q_tp1 * (1 - self.done_mask_ph))
 
         else:
-            q_target = self.rew_t_ph + (gamma * tf.reduce_max(qs_tp1_target, axis=1) * (1 - self.done_mask_ph))
+            q_target = self.rew_t_ph + \
+                (gamma * tf.reduce_max(qs_tp1_target, axis=1)
+                 * (1 - self.done_mask_ph))
         assert q_target.shape.as_list() == [None]
 
         # define loss for calculating bellman error
         # self.total_error = tf.losses.huber_loss(q_target, q_t, reduction=tf.losses.Reduction.SUM)
         self.total_error = tf.reduce_sum(huber_loss(q_t - q_target))
-        q_func_vars = tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope=scope_q_func)
-        target_q_func_vars = tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope=scope_target_q_func)
+        q_func_vars = tf.get_collection(
+            tf.GraphKeys.GLOBAL_VARIABLES, scope=scope_q_func)
+        target_q_func_vars = tf.get_collection(
+            tf.GraphKeys.GLOBAL_VARIABLES, scope=scope_target_q_func)
 
         ######
 
         # construct optimization op (with gradient clipping)
-        self.learning_rate = tf.placeholder(tf.float32, (), name="learning_rate")
+        self.learning_rate = tf.placeholder(
+            tf.float32, (), name="learning_rate")
         optimizer = self.optimizer_spec.constructor(
             learning_rate=self.learning_rate, **self.optimizer_spec.kwargs)
         self.train_fn = minimize_and_clip(optimizer, self.total_error,
@@ -235,7 +248,8 @@ class QLearner(object):
         self.update_target_fn = tf.group(*update_target_fn)
 
         # construct the replay buffer
-        self.replay_buffer = ReplayBuffer(replay_buffer_size, frame_history_len, lander=lander)
+        self.replay_buffer = ReplayBuffer(
+            replay_buffer_size, frame_history_len, lander=lander)
         self.replay_buffer_idx = None
 
         ###############
@@ -298,7 +312,8 @@ class QLearner(object):
         if not self.model_initialized or random.random() < self.exploration.value(self.t):
             action = self.env.action_space.sample()
         else:
-
+            action = self.session.run(self.q_argmax, feed_dict={
+                                      self.obs_t_ph: self.replay_buffer.encode_recent_observation()})
 
         # step the simulator using the new action and fetch the new last observation
         self.last_obs, reward, done, _ = self.env.step(action)
@@ -307,6 +322,8 @@ class QLearner(object):
         self.replay_buffer.store_effect(idx, action, reward, done)
 
         # check if episode is done, if so invoke obs = env.reset()
+        if done:
+            self.last_obs = self.env.reset()
 
     def update_model(self):
         # 3. Perform experience replay and train the network.
@@ -358,7 +375,8 @@ class QLearner(object):
         self.t += 1
 
     def log_progress(self):
-        episode_rewards = get_wrapper_by_name(self.env, "Monitor").get_episode_rewards()
+        episode_rewards = get_wrapper_by_name(
+            self.env, "Monitor").get_episode_rewards()
 
         if len(episode_rewards) > 0:
             self.mean_episode_reward = np.mean(episode_rewards[-100:])
@@ -373,9 +391,11 @@ class QLearner(object):
             print("best mean reward %f" % self.best_mean_episode_reward)
             print("episodes %d" % len(episode_rewards))
             print("exploration %f" % self.exploration.value(self.t))
-            print("learning_rate %f" % self.optimizer_spec.lr_schedule.value(self.t))
+            print("learning_rate %f" %
+                  self.optimizer_spec.lr_schedule.value(self.t))
             if self.start_time is not None:
-                print("running time %f" % ((time.time() - self.start_time) / 60.))
+                print("running time %f" %
+                      ((time.time() - self.start_time) / 60.))
 
             self.start_time = time.time()
 
