@@ -369,7 +369,34 @@ class QLearner(object):
             #####
 
             # YOUR CODE HERE
+            # sample mini-batch from replay buffer
+            obs_t_batch, act_batch, rew_batch, obs_tp1_batch, done_mask = self.replay_buffer.sample(
+                self.batch_size)
 
+            # initialize the model if its not initialized
+            if not self.model_initialized:
+                initialize_interdependent_variables(self.session, tf.global_variables(), {
+                    self.obs_t_ph: obs_t_batch,
+                    self.obs_tp1_ph: obs_tp1_batch})
+                self.model_initialized = True
+
+            # conduct one training step to update current q network
+            feed_dict = {
+                self.obs_t_ph = obs_t_batch,
+                self.act_t_ph = act_batch,
+                self.rew_t_ph = rew_batch,
+                self.obs_tp1_ph = obs_tp1_batch,
+                self.done_mask_ph = done_mask,
+                self.learning_rate = self.optimizer_spec.lr_schedule.value(t)
+            }
+            _, bellman_err = self.session.run(
+                [self.train_fn, self.total_error], feed_dict=feed_dict)
+
+            # print("The Bellman error at {} is {}".format(self.t, bellman_err))
+
+            # check if target network weights need to be updated
+            if self.num_param_updates % self.target_update_freq == 0:
+                self.session.run(self.update_target_fn)
             self.num_param_updates += 1
 
         self.t += 1
