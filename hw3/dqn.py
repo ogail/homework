@@ -223,8 +223,7 @@ class QLearner(object):
         assert q_target.shape.as_list() == [None]
 
         # define loss for calculating bellman error
-        # self.total_error = tf.losses.huber_loss(q_target, q_t, reduction=tf.losses.Reduction.SUM)
-        self.total_error = tf.reduce_sum(huber_loss(q_t - q_target))
+        self.total_error = tf.losses.huber_loss(q_target, q_t, reduction=tf.losses.Reduction.SUM)
         q_func_vars = tf.get_collection(
             tf.GraphKeys.GLOBAL_VARIABLES, scope=scope_q_func)
         target_q_func_vars = tf.get_collection(
@@ -313,7 +312,7 @@ class QLearner(object):
             action = self.env.action_space.sample()
         else:
             action = self.session.run(self.q_argmax, feed_dict={
-                                      self.obs_t_ph: self.replay_buffer.encode_recent_observation()})
+                                      self.obs_t_ph: self.replay_buffer.encode_recent_observation()[None]})[0]
 
         # step the simulator using the new action and fetch the new last observation
         self.last_obs, reward, done, _ = self.env.step(action)
@@ -382,12 +381,12 @@ class QLearner(object):
 
             # conduct one training step to update current q network
             feed_dict = {
-                self.obs_t_ph = obs_t_batch,
-                self.act_t_ph = act_batch,
-                self.rew_t_ph = rew_batch,
-                self.obs_tp1_ph = obs_tp1_batch,
-                self.done_mask_ph = done_mask,
-                self.learning_rate = self.optimizer_spec.lr_schedule.value(t)
+                self.obs_t_ph: obs_t_batch,
+                self.act_t_ph: act_batch,
+                self.rew_t_ph: rew_batch,
+                self.obs_tp1_ph: obs_tp1_batch,
+                self.done_mask_ph: done_mask,
+                self.learning_rate: self.optimizer_spec.lr_schedule.value(self.t)
             }
             _, bellman_err = self.session.run(
                 [self.train_fn, self.total_error], feed_dict=feed_dict)
