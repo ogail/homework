@@ -1,10 +1,15 @@
+import os
+import json
 import itertools
 import pickle
 import random
 import sys
 import time
+import inspect
 import uuid
+import logz
 from collections import namedtuple
+from pprint import pprint
 
 import gym.spaces
 import numpy as np
@@ -33,10 +38,19 @@ def get_action_q(q, a):
     return tf.gather_nd(q, indx)
 
 
+def is_jsonable(x):
+    try:
+        json.dumps(x)
+        return True
+    except:
+        return False
+
+
 class QLearner(object):
 
     def __init__(
             self,
+            exp_name,
             env,
             q_func,
             optimizer_spec,
@@ -53,7 +67,8 @@ class QLearner(object):
             grad_norm_clipping=10,
             rew_file=None,
             double_q=True,
-            lander=False):
+            lander=False,
+            logdir='data'):
         """Run Deep Q-learning algorithm.
 
         You can specify your own convnet using q_func.
@@ -62,6 +77,8 @@ class QLearner(object):
 
         Parameters
         ----------
+        exp_name: str
+            Name of the experiment.
         env: gym.Env
             gym environment to train on.
         q_func: function
@@ -106,10 +123,13 @@ class QLearner(object):
         double_q: bool
             If True, then use double Q-learning to compute target values. Otherwise, use vanilla DQN.
             https://papers.nips.cc/paper/3964-double-q-learning.pdf
+        logdir: str
+            Name of the log directory.
         """
         assert type(env.observation_space) == gym.spaces.Box
         assert type(env.action_space) == gym.spaces.Discrete
 
+        self.exp_name = exp_name
         self.target_update_freq = target_update_freq
         self.optimizer_spec = optimizer_spec
         self.batch_size = batch_size
@@ -121,6 +141,11 @@ class QLearner(object):
         self.exploration = exploration
         self.rew_file = str(uuid.uuid4()) + \
             '.pkl' if rew_file is None else rew_file
+
+        ################
+        # SETUP LOGGER #
+        ################
+        self.setup_logger(logdir, locals())
 
         ###############
         # BUILD MODEL #
@@ -223,7 +248,8 @@ class QLearner(object):
         assert q_target.shape.as_list() == [None]
 
         # define loss for calculating bellman error
-        self.total_error = tf.losses.huber_loss(q_target, q_t, reduction=tf.losses.Reduction.SUM)
+        self.total_error = tf.losses.huber_loss(
+            q_target, q_t, reduction=tf.losses.Reduction.SUM)
         q_func_vars = tf.get_collection(
             tf.GraphKeys.GLOBAL_VARIABLES, scope=scope_q_func)
         target_q_func_vars = tf.get_collection(
@@ -263,6 +289,23 @@ class QLearner(object):
 
         self.start_time = None
         self.t = 0
+
+    def setup_logger(self, dir, locals_):
+        # Create log dir
+        # if not(os.path.exists(dir)):
+        #     os.makedirs(dir)
+        logdir = self.exp_name + '_' + self.env.env.env.spec.id + \
+            '_' + time.strftime("%d-%m-%Y_%H-%M-%S")
+        logdir = os.path.join(dir, logdir)
+        # if not(os.path.exists(logdir)):
+        #     os.makedirs(logdir)
+        # Configure output directory for logging
+        logz.configure_output_dir(logdir)
+        # Log experimental parameters
+        args = inspect.getargspec(self.__init__)[0]
+        params = {k: locals_[k] if k in locals_ and is_jsonable(
+            locals_[k]) else None for k in args}
+        logz.save_params(params)
 
     def stopping_criterion_met(self):
         return self.stopping_criterion is not None and self.stopping_criterion(self.env, self.t)
@@ -429,6 +472,16 @@ class QLearner(object):
 
             with open(self.rew_file, 'wb') as f:
                 pickle.dump(episode_rewards, f, pickle.HIGHEST_PROTOCOL)
+
+            logz.log_tabular("Time", ((time.time() - self.start_time) / 60.))
+            logz.log_tabular("Timestep", self.t)
+            logz.log_tabular("MeanReward", self.mean_episode_reward)
+            logz.log_tabular("BestMeanReward", self.best_mean_episode_reward)
+            logz.log_tabular("Episodes", len(episode_rewards))
+            logz.log_tabular("Exploration", self.exploration.value(self.t))
+            logz.log_tabular(
+                "LearningRate", self.optimizer_spec.lr_schedule.value(self.t))
+            logz.dump_tabular()
 
 
 def learn(*args, **kwargs):
