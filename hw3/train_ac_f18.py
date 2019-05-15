@@ -232,7 +232,7 @@ class Agent(object):
                                                                   scale_diag=tf.math.exp(sy_logstd))
             # CORRECTION: because log probability is negative and because of loss expects +ve values
             # the log prob is multiplied by -1 to enable optimzation process to work
-            sy_logprob_n = -mvn.log_prob(sy_ac_na)
+            sy_logprob_n = mvn.log_prob(sy_ac_na)
             assert sy_logprob_n.shape.as_list() == [sy_mean.shape.as_list()[0]]
         self.sy_logprob_n = sy_logprob_n
         return sy_logprob_n
