@@ -13,7 +13,6 @@ import numpy as np
 import tensorflow as tf
 
 import logz
-import tensorflow_probability as tfp
 
 #============================================================================================#
 # Utilities
@@ -78,7 +77,8 @@ class Agent(object):
         self.n_layers = computation_graph_args['n_layers']
         self.learning_rate = computation_graph_args['learning_rate']
         self.num_target_updates = computation_graph_args['num_target_updates']
-        self.num_grad_steps_per_target_update = computation_graph_args['num_grad_steps_per_target_update']
+        self.num_grad_steps_per_target_update = computation_graph_args[
+            'num_grad_steps_per_target_update']
 
         self.animate = sample_trajectory_args['animate']
         self.max_path_length = sample_trajectory_args['max_path_length']
@@ -88,7 +88,8 @@ class Agent(object):
         self.normalize_advantages = estimate_advantage_args['normalize_advantages']
 
     def init_tf_sess(self):
-        tf_config = tf.ConfigProto(inter_op_parallelism_threads=1, intra_op_parallelism_threads=1)
+        tf_config = tf.ConfigProto(
+            inter_op_parallelism_threads=1, intra_op_parallelism_threads=1)
         tf_config.gpu_options.allow_growth = True  # may need if using GPU
         self.sess = tf.Session(config=tf_config)
         self.sess.__enter__()  # equivalent to `with self.sess:`
@@ -105,11 +106,13 @@ class Agent(object):
                 sy_ac_na: placeholder for actions
                 sy_adv_n: placeholder for advantages
         """
-        sy_ob_no = tf.placeholder(shape=[None, self.ob_dim], name="ob", dtype=tf.float32)
+        sy_ob_no = tf.placeholder(
+            shape=[None, self.ob_dim], name="ob", dtype=tf.float32)
         if self.discrete:
             sy_ac_na = tf.placeholder(shape=[None], name="ac", dtype=tf.int32)
         else:
-            sy_ac_na = tf.placeholder(shape=[None, self.ac_dim], name="ac", dtype=tf.float32)
+            sy_ac_na = tf.placeholder(
+                shape=[None, self.ac_dim], name="ac", dtype=tf.float32)
         # YOUR HW2 CODE HERE
         sy_adv_n = tf.placeholder(shape=[None], name="adv", dtype=tf.float32)
         return sy_ob_no, sy_ac_na, sy_adv_n
@@ -185,8 +188,10 @@ class Agent(object):
         if self.discrete:
             sy_logits_na = policy_parameters
             # YOUR_HW2 CODE_HERE
-            sy_sampled_ac = tf.squeeze(tf.multinomial(sy_logits_na, 1), axis=[1])
-            assert sy_sampled_ac.shape.as_list() == [sy_logits_na.shape.as_list()[0]]
+            sy_sampled_ac = tf.squeeze(
+                tf.multinomial(sy_logits_na, 1), axis=[1])
+            assert sy_sampled_ac.shape.as_list(
+            ) == [sy_logits_na.shape.as_list()[0]]
         else:
             sy_mean, sy_logstd = policy_parameters
             # YOUR_HW2 CODE_HERE
@@ -223,7 +228,8 @@ class Agent(object):
             # YOUR_HW2 CODE_HERE
             sy_logprob_n = tf.nn.sparse_softmax_cross_entropy_with_logits(labels=sy_ac_na,
                                                                           logits=sy_logits_na)
-            assert sy_logprob_n.shape.as_list() == [sy_logits_na.shape.as_list()[0]]
+            assert sy_logprob_n.shape.as_list(
+            ) == [sy_logits_na.shape.as_list()[0]]
         else:
             sy_mean, sy_logstd = policy_parameters
             # YOUR_HW2 CODE_HERE
@@ -232,7 +238,7 @@ class Agent(object):
                                                                   scale_diag=tf.math.exp(sy_logstd))
             # CORRECTION: because log probability is negative and because of loss expects +ve values
             # the log prob is multiplied by -1 to enable optimzation process to work
-            sy_logprob_n = mvn.log_prob(sy_ac_na)
+            sy_logprob_n = -mvn.log_prob(sy_ac_na)
             assert sy_logprob_n.shape.as_list() == [sy_mean.shape.as_list()[0]]
         self.sy_logprob_n = sy_logprob_n
         return sy_logprob_n
@@ -269,10 +275,12 @@ class Agent(object):
 
         # We can also compute the logprob of the actions that were actually taken by the policy
         # This is used in the loss function.
-        self.sy_logprob_n = self.get_log_prob(self.policy_parameters, self.sy_ac_na)
+        self.sy_logprob_n = self.get_log_prob(
+            self.policy_parameters, self.sy_ac_na)
 
-        actor_loss = tf.reduce_sum(-self.sy_logprob_n * self.sy_adv_n)
-        self.actor_update_op = tf.train.AdamOptimizer(self.learning_rate).minimize(actor_loss)
+        self.actor_loss = tf.reduce_sum(self.sy_logprob_n * self.sy_adv_n)
+        self.actor_update_op = tf.train.AdamOptimizer(
+            self.learning_rate).minimize(self.actor_loss)
 
         # define the critic
         self.critic_prediction = tf.squeeze(build_mlp(
@@ -281,8 +289,10 @@ class Agent(object):
             "nn_critic",
             n_layers=self.n_layers,
             size=self.size))
-        self.sy_target_n = tf.placeholder(shape=[None], name="critic_target", dtype=tf.float32)
-        self.critic_loss = tf.losses.mean_squared_error(self.sy_target_n, self.critic_prediction)
+        self.sy_target_n = tf.placeholder(
+            shape=[None], name="critic_target", dtype=tf.float32)
+        self.critic_loss = tf.losses.mean_squared_error(
+            self.sy_target_n, self.critic_prediction)
         self.critic_update_op = tf.train.AdamOptimizer(
             self.learning_rate).minimize(self.critic_loss)
 
@@ -291,7 +301,8 @@ class Agent(object):
         timesteps_this_batch = 0
         paths = []
         while True:
-            animate_this_episode = (len(paths) == 0 and (itr % 10 == 0) and self.animate)
+            animate_this_episode = (len(paths) == 0 and (
+                itr % 10 == 0) and self.animate)
             path = self.sample_trajectory(env, animate_this_episode)
             paths.append(path)
             timesteps_this_batch += pathlength(path)
@@ -315,17 +326,17 @@ class Agent(object):
             ob, rew, done, _ = env.step(ac)
             # add the observation after taking a step to next_obs
             # YOUR CODE HERE
-            raise NotImplementedError
+            next_obs.append(ob)
             rewards.append(rew)
             steps += 1
             # If the episode ended, the corresponding terminal value is 1
             # otherwise, it is 0
             # YOUR CODE HERE
             if done or steps > self.max_path_length:
-                raise NotImplementedError
+                terminals.append(1)
                 break
             else:
-                raise NotImplementedError
+                terminals.append(0)
         path = {"observation": np.array(obs, dtype=np.float32),
                 "reward": np.array(rewards, dtype=np.float32),
                 "action": np.array(acs, dtype=np.float32),
@@ -365,8 +376,12 @@ class Agent(object):
         # Note: don't forget to use terminal_n to cut off the V(s') term when computing Q(s, a)
         # otherwise the values will grow without bound.
         # YOUR CODE HERE
-        raise NotImplementedError
-        adv_n = None
+        q_tp1 = self.sess.run(self.critic_prediction, feed_dict={
+                              self.sy_ob_no: next_ob_no})
+        q_t = self.sess.run(self.critic_prediction,
+                            feed_dict={self.sy_ob_no: ob_no})
+
+        adv_n = re_n + self.gamma * q_tp1 * (1 - terminal_n) - q_t
 
         if self.normalize_advantages:
             # On the next line, implement a trick which is known empirically to reduce variance
@@ -401,7 +416,18 @@ class Agent(object):
         # Note: don't forget to use terminal_n to cut off the V(s') term when computing the target
         # otherwise the values will grow without bound.
         # YOUR CODE HERE
-        raise NotImplementedError
+
+        for _ in range(self.num_target_updates):
+            # compute target values
+            q_tp1 = self.sess.run(self.critic_prediction, feed_dict={
+                                  self.sy_ob_no: next_ob_no})
+            target_n = re_n + self.gamma * q_tp1 * (1 - terminal_n)
+
+            for _ in range(self.num_grad_steps_per_target_update):
+                # take gradinet step
+                _, loss = self.sess.run([self.critic_update_op, self.critic_loss], feed_dict={
+                              self.sy_ob_no: ob_no, self.sy_target_n: target_n})
+                # print("Critic loss: {}".format(loss))
 
     def update_actor(self, ob_no, ac_na, adv_n):
         """
@@ -417,8 +443,9 @@ class Agent(object):
                 nothing
 
         """
-        self.sess.run(self.actor_update_op,
+        _, loss = self.sess.run([self.actor_update_op, self.actor_loss],
                       feed_dict={self.sy_ob_no: ob_no, self.sy_ac_na: ac_na, self.sy_adv_n: adv_n})
+        # print("Actor loss: {}".format(loss))
 
 
 def train_AC(
@@ -516,7 +543,8 @@ def train_AC(
         ob_no = np.concatenate([path["observation"] for path in paths])
         ac_na = np.concatenate([path["action"] for path in paths])
         re_n = np.concatenate([path["reward"] for path in paths])
-        next_ob_no = np.concatenate([path["next_observation"] for path in paths])
+        next_ob_no = np.concatenate(
+            [path["next_observation"] for path in paths])
         terminal_n = np.concatenate([path["terminal"] for path in paths])
 
         # Call tensorflow operations to:
@@ -524,7 +552,9 @@ def train_AC(
         # (2) use the updated critic to compute the advantage by, calling agent.estimate_advantage
         # (3) use the estimated advantage values to update the actor, by calling agent.update_actor
         # YOUR CODE HERE
-        raise NotImplementedError
+        agent.update_critic(ob_no, next_ob_no, re_n, terminal_n)
+        adv_n = agent.estimate_advantage(ob_no, next_ob_no, re_n, terminal_n)
+        agent.update_actor(ob_no, ac_na, adv_n)
 
         # Log diagnostics
         returns = [path["reward"].sum() for path in paths]
@@ -554,20 +584,24 @@ def main():
     parser.add_argument('--batch_size', '-b', type=int, default=1000)
     parser.add_argument('--ep_len', '-ep', type=float, default=-1.)
     parser.add_argument('--learning_rate', '-lr', type=float, default=5e-3)
-    parser.add_argument('--dont_normalize_advantages', '-dna', action='store_true')
+    parser.add_argument('--dont_normalize_advantages',
+                        '-dna', action='store_true')
     parser.add_argument('--num_target_updates', '-ntu', type=int, default=10)
-    parser.add_argument('--num_grad_steps_per_target_update', '-ngsptu', type=int, default=10)
+    parser.add_argument('--num_grad_steps_per_target_update',
+                        '-ngsptu', type=int, default=10)
     parser.add_argument('--seed', type=int, default=1)
     parser.add_argument('--n_experiments', '-e', type=int, default=1)
     parser.add_argument('--n_layers', '-l', type=int, default=2)
     parser.add_argument('--size', '-s', type=int, default=64)
     args = parser.parse_args()
 
-    data_path = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'data')
+    data_path = os.path.join(os.path.dirname(
+        os.path.realpath(__file__)), 'data')
 
     if not (os.path.exists(data_path)):
         os.makedirs(data_path)
-    logdir = 'ac_' + args.exp_name + '_' + args.env_name + '_' + time.strftime("%d-%m-%Y_%H-%M-%S")
+    logdir = 'ac_' + args.exp_name + '_' + args.env_name + \
+        '_' + time.strftime("%d-%m-%Y_%H-%M-%S")
     logdir = os.path.join(data_path, logdir)
     if not(os.path.exists(logdir)):
         os.makedirs(logdir)

@@ -326,10 +326,10 @@ class Agent(object):
             # CORRECTION: if you wanted to decouple the advantage from the actual target, just define
             # a new variable placeholder with desired shape
             self.sy_target_n = tf.placeholder(shape=[None], name="bl", dtype=tf.float32)
-            baseline_loss = tf.losses.mean_squared_error(
+            self.baseline_loss = tf.losses.mean_squared_error(
                 labels=self.sy_target_n, predictions=self.baseline_prediction)
             self.baseline_update_op = tf.train.AdamOptimizer(
-                self.learning_rate).minimize(baseline_loss)
+                self.learning_rate).minimize(self.baseline_loss)
 
     def sample_trajectories(self, itr, env):
         # Collect paths until we have enough timesteps
@@ -589,9 +589,10 @@ class Agent(object):
 
             # YOUR_CODE_HERE
             target_n = self.norm(q_n)
-            _ = self.sess.run(self.baseline_update_op,
+            _, bl_loss = self.sess.run([self.baseline_update_op, self.baseline_loss],
                               feed_dict={self.sy_ob_no: ob_no,
                                          self.sy_target_n: target_n})
+            print("baseline loss: {}".format(bl_loss))
 
         #====================================================================================#
         #                           ----------PROBLEM 3----------
@@ -610,6 +611,7 @@ class Agent(object):
                                                     self.sy_ac_na: ac_na,
                                                     self.sy_adv_n: adv_n})
 
+        print("Actor loss: {}".format(loss))
         # write logs at every iteration
         self.summary_writer.add_summary(summary)
         self.summary_writer.flush()
@@ -620,6 +622,7 @@ def train_PG(
         env_name,
         n_iter,
         gamma,
+        alpha,
         min_timesteps_per_batch,
         max_path_length,
         learning_rate,
@@ -681,7 +684,7 @@ def train_PG(
 
     estimate_return_args = {
         'gamma': gamma,
-        'gamma': alpha,
+        'alpha': alpha,
         'reward_to_go': reward_to_go,
         'nn_baseline': nn_baseline,
         'normalize_advantages': normalize_advantages,
