@@ -1,10 +1,15 @@
+import os
+import json
 import itertools
 import pickle
 import random
 import sys
 import time
+import inspect
 import uuid
+import logz
 from collections import namedtuple
+from pprint import pprint
 
 import gym.spaces
 import numpy as np
@@ -13,7 +18,8 @@ import tensorflow.contrib.layers as layers
 
 from dqn_utils import *
 
-OptimizerSpec = namedtuple("OptimizerSpec", ["constructor", "kwargs", "lr_schedule"])
+OptimizerSpec = namedtuple(
+    "OptimizerSpec", ["constructor", "kwargs", "lr_schedule"])
 
 
 def get_action_q(q, a):
@@ -32,10 +38,19 @@ def get_action_q(q, a):
     return tf.gather_nd(q, indx)
 
 
+def is_jsonable(x):
+    try:
+        json.dumps(x)
+        return True
+    except:
+        return False
+
+
 class QLearner(object):
 
     def __init__(
             self,
+            exp_name,
             env,
             q_func,
             optimizer_spec,
@@ -52,7 +67,8 @@ class QLearner(object):
             grad_norm_clipping=10,
             rew_file=None,
             double_q=True,
-            lander=False):
+            lander=False,
+            logdir='data'):
         """Run Deep Q-learning algorithm.
 
         You can specify your own convnet using q_func.
@@ -61,6 +77,8 @@ class QLearner(object):
 
         Parameters
         ----------
+        exp_name: str
+            Name of the experiment.
         env: gym.Env
             gym environment to train on.
         q_func: function
@@ -105,10 +123,13 @@ class QLearner(object):
         double_q: bool
             If True, then use double Q-learning to compute target values. Otherwise, use vanilla DQN.
             https://papers.nips.cc/paper/3964-double-q-learning.pdf
+        logdir: str
+            Name of the log directory.
         """
         assert type(env.observation_space) == gym.spaces.Box
         assert type(env.action_space) == gym.spaces.Discrete
 
+        self.exp_name = exp_name
         self.target_update_freq = target_update_freq
         self.optimizer_spec = optimizer_spec
         self.batch_size = batch_size
@@ -118,7 +139,13 @@ class QLearner(object):
         self.env = env
         self.session = session
         self.exploration = exploration
-        self.rew_file = str(uuid.uuid4()) + '.pkl' if rew_file is None else rew_file
+        self.rew_file = str(uuid.uuid4()) + \
+            '.pkl' if rew_file is None else rew_file
+
+        ################
+        # SETUP LOGGER #
+        ################
+        self.setup_logger(logdir, locals())
 
         ###############
         # BUILD MODEL #
@@ -182,20 +209,25 @@ class QLearner(object):
         scope_target_q_func = 'target_q_func'
 
         # get q values for all actions in the current state s_t via current q function
-        qs_t = q_func(obs_t_float, self.num_actions, scope=scope_q_func, reuse=False)
+        qs_t = q_func(obs_t_float, self.num_actions,
+                      scope=scope_q_func, reuse=False)
         assert qs_t.shape.as_list() == [None, self.num_actions]
+
+        self.q_argmax = tf.argmax(qs_t, axis=1, output_type=tf.int32)
 
         # get q values for executed actions only
         q_t = get_action_q(qs_t, self.act_t_ph)
         assert q_t.shape.as_list() == [None]
 
         # get q values for all actions in the next state s_tp1 via target q function
-        qs_tp1_target = q_func(obs_tp1_float, self.num_actions, scope=scope_target_q_func, reuse=False)
+        qs_tp1_target = q_func(
+            obs_tp1_float, self.num_actions, scope=scope_target_q_func, reuse=False)
         assert qs_tp1_target.shape.as_list() == [None, self.num_actions]
 
         if double_q:
             # get q values for all actions in the next state s_t+1 via current q function
-            qs_tp1 = q_func(obs_tp1_float, self.num_actions, scope=scope_q_func, reuse=True)
+            qs_tp1 = q_func(obs_tp1_float, self.num_actions,
+                            scope=scope_q_func, reuse=True)
             assert qs_tp1.shape.as_list() == [None, self.num_actions]
 
             # get actions with max q values only
@@ -206,22 +238,28 @@ class QLearner(object):
             q_tp1 = get_action_q(qs_tp1_target, act_argmax_tp1)
             assert q_tp1.shape.as_list() == [None]
 
-            q_target = self.rew_t_ph + (gamma * q_tp1 * (1 - self.done_mask_ph))
+            q_target = self.rew_t_ph + \
+                (gamma * q_tp1 * (1 - self.done_mask_ph))
 
         else:
-            q_target = self.rew_t_ph + (gamma * tf.reduce_max(qs_tp1_target, axis=1) * (1 - self.done_mask_ph))
+            q_target = self.rew_t_ph + \
+                (gamma * tf.reduce_max(qs_tp1_target, axis=1)
+                 * (1 - self.done_mask_ph))
         assert q_target.shape.as_list() == [None]
 
         # define loss for calculating bellman error
-        # self.total_error = tf.losses.huber_loss(q_target, q_t, reduction=tf.losses.Reduction.SUM)
-        self.total_error = tf.reduce_sum(huber_loss(q_t - q_target))
-        q_func_vars = tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope=scope_q_func)
-        target_q_func_vars = tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope=scope_target_q_func)
+        self.total_error = tf.losses.huber_loss(
+            q_target, q_t, reduction=tf.losses.Reduction.SUM)
+        q_func_vars = tf.get_collection(
+            tf.GraphKeys.GLOBAL_VARIABLES, scope=scope_q_func)
+        target_q_func_vars = tf.get_collection(
+            tf.GraphKeys.GLOBAL_VARIABLES, scope=scope_target_q_func)
 
         ######
 
         # construct optimization op (with gradient clipping)
-        self.learning_rate = tf.placeholder(tf.float32, (), name="learning_rate")
+        self.learning_rate = tf.placeholder(
+            tf.float32, (), name="learning_rate")
         optimizer = self.optimizer_spec.constructor(
             learning_rate=self.learning_rate, **self.optimizer_spec.kwargs)
         self.train_fn = minimize_and_clip(optimizer, self.total_error,
@@ -235,7 +273,8 @@ class QLearner(object):
         self.update_target_fn = tf.group(*update_target_fn)
 
         # construct the replay buffer
-        self.replay_buffer = ReplayBuffer(replay_buffer_size, frame_history_len, lander=lander)
+        self.replay_buffer = ReplayBuffer(
+            replay_buffer_size, frame_history_len, lander=lander)
         self.replay_buffer_idx = None
 
         ###############
@@ -250,6 +289,23 @@ class QLearner(object):
 
         self.start_time = None
         self.t = 0
+
+    def setup_logger(self, dir, locals_):
+        # Create log dir
+        # if not(os.path.exists(dir)):
+        #     os.makedirs(dir)
+        logdir = self.exp_name + '_' + self.env.env.env.spec.id + \
+            '_' + time.strftime("%d-%m-%Y_%H-%M-%S")
+        logdir = os.path.join(dir, logdir)
+        # if not(os.path.exists(logdir)):
+        #     os.makedirs(logdir)
+        # Configure output directory for logging
+        logz.configure_output_dir(logdir)
+        # Log experimental parameters
+        args = inspect.getargspec(self.__init__)[0]
+        params = {k: locals_[k] if k in locals_ and is_jsonable(
+            locals_[k]) else None for k in args}
+        logz.save_params(params)
 
     def stopping_criterion_met(self):
         return self.stopping_criterion is not None and self.stopping_criterion(self.env, self.t)
@@ -298,7 +354,8 @@ class QLearner(object):
         if not self.model_initialized or random.random() < self.exploration.value(self.t):
             action = self.env.action_space.sample()
         else:
-
+            action = self.session.run(self.q_argmax, feed_dict={
+                                      self.obs_t_ph: self.replay_buffer.encode_recent_observation()[None]})[0]
 
         # step the simulator using the new action and fetch the new last observation
         self.last_obs, reward, done, _ = self.env.step(action)
@@ -307,6 +364,8 @@ class QLearner(object):
         self.replay_buffer.store_effect(idx, action, reward, done)
 
         # check if episode is done, if so invoke obs = env.reset()
+        if done:
+            self.last_obs = self.env.reset()
 
     def update_model(self):
         # 3. Perform experience replay and train the network.
@@ -352,13 +411,41 @@ class QLearner(object):
             #####
 
             # YOUR CODE HERE
+            # sample mini-batch from replay buffer
+            obs_t_batch, act_batch, rew_batch, obs_tp1_batch, done_mask = self.replay_buffer.sample(
+                self.batch_size)
 
+            # initialize the model if its not initialized
+            if not self.model_initialized:
+                initialize_interdependent_variables(self.session, tf.global_variables(), {
+                    self.obs_t_ph: obs_t_batch,
+                    self.obs_tp1_ph: obs_tp1_batch})
+                self.model_initialized = True
+
+            # conduct one training step to update current q network
+            feed_dict = {
+                self.obs_t_ph: obs_t_batch,
+                self.act_t_ph: act_batch,
+                self.rew_t_ph: rew_batch,
+                self.obs_tp1_ph: obs_tp1_batch,
+                self.done_mask_ph: done_mask,
+                self.learning_rate: self.optimizer_spec.lr_schedule.value(self.t)
+            }
+            _, bellman_err = self.session.run(
+                [self.train_fn, self.total_error], feed_dict=feed_dict)
+
+            # print("The Bellman error at {} is {}".format(self.t, bellman_err))
+
+            # check if target network weights need to be updated
+            if self.num_param_updates % self.target_update_freq == 0:
+                self.session.run(self.update_target_fn)
             self.num_param_updates += 1
 
         self.t += 1
 
     def log_progress(self):
-        episode_rewards = get_wrapper_by_name(self.env, "Monitor").get_episode_rewards()
+        episode_rewards = get_wrapper_by_name(
+            self.env, "Monitor").get_episode_rewards()
 
         if len(episode_rewards) > 0:
             self.mean_episode_reward = np.mean(episode_rewards[-100:])
@@ -373,9 +460,11 @@ class QLearner(object):
             print("best mean reward %f" % self.best_mean_episode_reward)
             print("episodes %d" % len(episode_rewards))
             print("exploration %f" % self.exploration.value(self.t))
-            print("learning_rate %f" % self.optimizer_spec.lr_schedule.value(self.t))
+            print("learning_rate %f" %
+                  self.optimizer_spec.lr_schedule.value(self.t))
             if self.start_time is not None:
-                print("running time %f" % ((time.time() - self.start_time) / 60.))
+                print("running time %f" %
+                      ((time.time() - self.start_time) / 60.))
 
             self.start_time = time.time()
 
@@ -383,6 +472,16 @@ class QLearner(object):
 
             with open(self.rew_file, 'wb') as f:
                 pickle.dump(episode_rewards, f, pickle.HIGHEST_PROTOCOL)
+
+            logz.log_tabular("Time", ((time.time() - self.start_time) / 60.))
+            logz.log_tabular("Timestep", self.t)
+            logz.log_tabular("MeanReward", self.mean_episode_reward)
+            logz.log_tabular("BestMeanReward", self.best_mean_episode_reward)
+            logz.log_tabular("Episodes", len(episode_rewards))
+            logz.log_tabular("Exploration", self.exploration.value(self.t))
+            logz.log_tabular(
+                "LearningRate", self.optimizer_spec.lr_schedule.value(self.t))
+            logz.dump_tabular()
 
 
 def learn(*args, **kwargs):

@@ -42,7 +42,7 @@ def lander_exploration_schedule(num_timesteps):
         ], outside_value=0.02
     )
 
-def lander_kwargs():
+def lander_kwargs(args):
     return {
         'optimizer_spec': lander_optimizer(),
         'q_func': lander_model,
@@ -54,14 +54,11 @@ def lander_kwargs():
         'frame_history_len': 1,
         'target_update_freq': 3000,
         'grad_norm_clipping': 10,
-        'lander': True
+        'lander': True,
+        'exp_name': args.exp_name
     }
 
-def lander_learn(env,
-                 session,
-                 num_timesteps,
-                 seed):
-
+def lander_learn(args, env, session, num_timesteps, seed):
     optimizer = lander_optimizer()
     stopping_criterion = lander_stopping_criterion(num_timesteps)
     exploration_schedule = lander_exploration_schedule(num_timesteps)
@@ -72,7 +69,7 @@ def lander_learn(env,
         exploration=lander_exploration_schedule(num_timesteps),
         stopping_criterion=lander_stopping_criterion(num_timesteps),
         double_q=True,
-        **lander_kwargs()
+        **lander_kwargs(args)
     )
     env.close()
 
@@ -104,13 +101,17 @@ def get_env(seed):
     return env
 
 def main():
+    # Setup arguments
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--exp_name', type=str, default='DoubleQLearning')
+    args = parser.parse_args()
     # Run training
     seed = 4565 # you may want to randomize this
     print('random seed = %d' % seed)
     env = get_env(seed)
     session = get_session()
     set_global_seeds(seed)
-    lander_learn(env, session, num_timesteps=500000, seed=seed)
+    lander_learn(args, env, session, num_timesteps=500000, seed=seed)
 
 if __name__ == "__main__":
     main()
