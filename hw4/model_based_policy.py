@@ -1,5 +1,5 @@
-import tensorflow as tf
 import numpy as np
+import tensorflow as tf
 
 import utils
 
@@ -39,8 +39,8 @@ class ModelBasedPolicy(object):
                 (a) the placeholders should have 2 dimensions,
                     in which the 1st dimension is variable length (i.e., None)
         """
-        ### PROBLEM 1
-        ### YOUR CODE HERE
+        # PROBLEM 1
+        # YOUR CODE HERE
         raise NotImplementedError
 
         return state_ph, action_ph, next_state_ph
@@ -63,8 +63,8 @@ class ModelBasedPolicy(object):
                     the predicted next state
 
         """
-        ### PROBLEM 1
-        ### YOUR CODE HERE
+        # PROBLEM 1
+        # YOUR CODE HERE
         raise NotImplementedError
 
         return next_state_pred
@@ -87,8 +87,8 @@ class ModelBasedPolicy(object):
                 (d) Create the optimizer by minimizing the loss using the Adam optimizer with self._learning_rate
 
         """
-        ### PROBLEM 1
-        ### YOUR CODE HERE
+        # PROBLEM 1
+        # YOUR CODE HERE
         raise NotImplementedError
 
         return loss, optimizer
@@ -120,8 +120,8 @@ class ModelBasedPolicy(object):
                 (iii) Use tf.random_uniform(...) to generate the random action sequences
 
         """
-        ### PROBLEM 2
-        ### YOUR CODE HERE
+        # PROBLEM 2
+        # YOUR CODE HERE
         raise NotImplementedError
 
         return best_action
@@ -134,17 +134,17 @@ class ModelBasedPolicy(object):
         """
         sess = tf.Session()
 
-        ### PROBLEM 1
-        ### YOUR CODE HERE
+        # PROBLEM 1
+        # YOUR CODE HERE
         raise NotImplementedError
-        ### PROBLEM 2
-        ### YOUR CODE HERE
+        # PROBLEM 2
+        # YOUR CODE HERE
         best_action = None
 
         sess.run(tf.global_variables_initializer())
 
         return sess, state_ph, action_ph, next_state_ph, \
-                next_state_pred, loss, optimizer, best_action
+            next_state_pred, loss, optimizer, best_action
 
     def train_step(self, states, actions, next_states):
         """
@@ -153,8 +153,8 @@ class ModelBasedPolicy(object):
         returns:
             loss: the loss from performing gradient descent
         """
-        ### PROBLEM 1
-        ### YOUR CODE HERE
+        # PROBLEM 1
+        # YOUR CODE HERE
         raise NotImplementedError
 
         return loss
@@ -172,8 +172,8 @@ class ModelBasedPolicy(object):
         assert np.shape(state) == (self._state_dim,)
         assert np.shape(action) == (self._action_dim,)
 
-        ### PROBLEM 1
-        ### YOUR CODE HERE
+        # PROBLEM 1
+        # YOUR CODE HERE
         raise NotImplementedError
 
         assert np.shape(next_state_pred) == (self._state_dim,)
@@ -188,8 +188,8 @@ class ModelBasedPolicy(object):
         """
         assert np.shape(state) == (self._state_dim,)
 
-        ### PROBLEM 2
-        ### YOUR CODE HERE
+        # PROBLEM 2
+        # YOUR CODE HERE
         raise NotImplementedError
 
         assert np.shape(best_action) == (self._action_dim,)
