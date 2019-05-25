@@ -165,12 +165,12 @@ class ModelBasedRL(object):
         logger.info('Training policy....')
         # PROBLEM 2
         # YOUR CODE HERE
-        raise NotImplementedError
+        self._train_policy(self._random_dataset)
 
         logger.info('Evaluating policy...')
         # PROBLEM 2
         # YOUR CODE HERE
-        raise NotImplementedError
+        eval_dataset = self._gather_rollouts(self._policy, 10)
 
         logger.info('Trained policy')
         self._log(eval_dataset)

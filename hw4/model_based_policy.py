@@ -140,7 +140,20 @@ class ModelBasedPolicy(object):
         """
         # PROBLEM 2
         # YOUR CODE HERE
-        raise NotImplementedError
+        sampled_ac = tf.random_uniform(
+            shape=[self._num_random_action_selection, self._horizon, self._action_dim],
+            minval=self._action_space_low,
+            maxval=self._action_space_high)
+        cost_per_sequences = tf.zeros([self._num_random_action_selection])
+        states = tf.ones([self._num_random_action_selection, self._state_dim]) * state_ph
+
+        for i in range(self._horizon):
+            actions = sampled_ac[:, i]
+            next_states = self._dynamics_func(states, actions, True)
+            cost_per_sequences += self._cost_fn(states, actions, next_states)
+            states = next_states
+        lowest_cost_seq = tf.argmin(cost_per_sequences)
+        best_action = sampled_ac[lowest_cost_seq, 0]
 
         return best_action
 
@@ -159,7 +172,7 @@ class ModelBasedPolicy(object):
         loss, optimizer = self._setup_training(state_ph, next_state_ph, next_state_pred)
         # PROBLEM 2
         # YOUR CODE HERE
-        best_action = None
+        best_action = self._setup_action_selection(state_ph)
 
         sess.run(tf.global_variables_initializer())
 
@@ -217,7 +230,9 @@ class ModelBasedPolicy(object):
 
         # PROBLEM 2
         # YOUR CODE HERE
-        raise NotImplementedError
+        best_action = np.squeeze(self._sess.run(self._best_action, feed_dict={
+            self._state_ph: [state]
+        }))
 
         assert np.shape(best_action) == (self._action_dim,)
         return best_action
