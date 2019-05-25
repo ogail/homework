@@ -194,7 +194,7 @@ class ModelBasedRL(object):
             # PROBLEM 3
             # YOUR CODE HERE
             logger.info('Training policy...')
-            self._log(dataset)
+            self._train_policy(dataset)
 
             # PROBLEM 3
             # YOUR CODE HERE
