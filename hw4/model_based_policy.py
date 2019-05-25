@@ -75,7 +75,7 @@ class ModelBasedPolicy(object):
         state_diff_norm = utils.build_mlp(
             concat_input, self._state_dim, scope='dynamics_func', n_layers=self._nn_layers, reuse=reuse)
         state_diff = utils.unnormalize(
-            state_diff_norm, self._init_dataset.state_mean, self._init_dataset.state_std)
+            state_diff_norm, self._init_dataset.delta_state_mean, self._init_dataset.delta_state_std)
         next_state_pred = state + state_diff
 
         return next_state_pred
@@ -103,9 +103,9 @@ class ModelBasedPolicy(object):
         label_diff = next_state_ph - state_ph
         pred_diff = next_state_pred - state_ph
         label_diff_norm = utils.normalize(
-            label_diff, self._init_dataset.state_mean, self._init_dataset.state_std)
+            label_diff, self._init_dataset.delta_state_mean, self._init_dataset.delta_state_std)
         pred_diff_norm = utils.normalize(
-            pred_diff, self._init_dataset.state_mean, self._init_dataset.state_std)
+            pred_diff, self._init_dataset.delta_state_mean, self._init_dataset.delta_state_std)
         loss = tf.losses.mean_squared_error(labels=label_diff_norm, predictions=pred_diff_norm)
         optimizer = tf.train.AdamOptimizer(self._learning_rate).minimize(loss)
 
